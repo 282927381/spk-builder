@@ -1,7 +1,7 @@
 # SPK 构建台
 
 一个**可视化 Web 操作台**,用来打包 / 构建群晖(Synology)套件安装包 `.spk`。
-支持多种语言、多种架构,点几下就能出包,并可直接配合 [jdel/sspks](https://github.com/jdel/sspks) 套件服务器分发。
+支持多种语言、多种架构,点几下就能出包,并可直接配合 [sspks-imnks](https://github.com/tbc0309/sspks-imnks) 套件服务器分发。
 
 ## 能做什么
 
