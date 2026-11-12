@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPK 构建台</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">📦</span>
+      <div>
+        <h1>SPK 构建台</h1>
+        <p>可视化打包 / 构建 Synology 套件(.spk),支持多语言、多架构</p>
+      </div>
+    </div>
+    <div class="tools" id="tools"></div>
+  </header>
+
+  <nav class="navbar">
+    <button class="navtab active" data-tab="build">🚀 构建</button>
+    <button class="navtab" data-tab="unpack">📥 解包</button>
+    <button class="navtab" data-tab="help">📖 使用说明</button>
+  </nav>
+
+  <main>
+    <!-- ============ 构建页 ============ -->
+    <div id="page-build" class="page">
+      <form id="form" autocomplete="off">
+        <!-- 基本信息 -->
+        <section>
+          <h2>① 套件信息</h2>
+          <div class="grid">
+            <label>套件标识(package)<span class="req">*</span>
+              <input name="name" required placeholder="myapp(英文小写,勿含 : / &gt; &lt; | =)" />
+            </label>
+            <label>版本(version)<span class="req">*</span>
+              <input name="version" required placeholder="1.0.0-0001" />
+            </label>
+            <label>显示名称(displayname)
+              <input name="displayname" placeholder="My App" />
+            </label>
+            <label>显示名称(简体中文)
+              <input name="displayname_chs" placeholder="我的应用" />
+            </label>
+            <label class="full">描述(description)
+              <textarea name="description" rows="2" placeholder="一句话描述这个套件"></textarea>
+            </label>
+            <label class="full">描述(简体中文 description_chs)
+              <textarea name="description_chs" rows="2" placeholder="简体中文描述"></textarea>
+            </label>
+            <label>维护者(maintainer)
+              <input name="maintainer" placeholder="Your Name" />
+            </label>
+            <label>维护者网址(maintainer_url)
+              <input name="maintainer_url" placeholder="https://example.com" />
+            </label>
+            <label>发行者(distributor)
+              <input name="distributor" placeholder="Your Name" />
+            </label>
+            <label>发行者网址(distributor_url)
+              <input name="distributor_url" placeholder="https://example.com" />
+            </label>
+            <label>支持网址(support_url)
+              <input name="support_url" placeholder="https://example.com/support" />
+            </label>
+            <label>最低 DSM 版本(os_min_ver)
+              <input name="os_min_ver" placeholder="7.0-40000" />
+            </label>
+            <label>运行程序名(binary_name)
+              <input name="binary_name" placeholder="默认与套件标识相同" />
+            </label>
+          </div>
+        </section>
+
+        <!-- 架构 -->
+        <section>
+          <h2>② 目标架构(可多选,每种架构生成一个 .spk)</h2>
+          <div class="chips" id="archs">
+            <label><input type="checkbox" name="arch" value="x86_64" checked /> x86_64 <small>Intel/AMD 机型</small></label>
+            <label><input type="checkbox" name="arch" value="armv7" /> armv7 <small>老 ARM 机型</small></label>
+            <label><input type="checkbox" name="arch" value="arm64" /> arm64 <small>新 ARM 机型</small></label>
+            <label><input type="checkbox" name="arch" value="noarch" /> noarch <small>纯脚本/静态,通用</small></label>
+          </div>
+        </section>
+
+        <!-- 构建方式 -->
+        <section>
+          <h2>③ 构建方式</h2>
+          <div class="modes" id="modes">
+            <label><input type="radio" name="mode" value="prebuilt" checked /> 预编译 / 纯脚本(直接把已有目录打进包)</label>
+            <label><input type="radio" name="mode" value="go" /> Go(本机交叉编译)</label>
+            <label><input type="radio" name="mode" value="docker" /> Docker(编译 C/C++ 等,需 Linux 容器)</label>
+            <label><input type="radio" name="mode" value="local" /> 本地命令(任意语言,自定义命令)</label>
+            <label><input type="radio" name="mode" value="spksrc" /> spksrc(SynoCommunity 交叉编译,需 WSL2)</label>
+          </div>
+
+          <div class="mode-panel" id="panel-prebuilt">
+            <p class="hint">把要安装的文件放到一个目录里(如 <code>bin/</code>、<code>ui/</code>、<code>conf/</code>),填下面的“源目录”。多架构时可在源目录下按 <code>x86_64/ armv7/ arm64/</code> 建子目录放各自二进制。目录里如有 <code>scripts/</code> 或 <code>PACKAGE_ICON*.PNG</code> 会被自动采用。</p>
+            <label class="full">源目录(要打包的目录)<span class="req">*</span>
+              <input name="prebuilt_source_dir" placeholder="C:\projects\mypkg\target" />
+            </label>
+          </div>
+          <div class="mode-panel hidden" id="panel-go">
+            <label class="full">源码目录(Go module 根目录)<span class="req">*</span>
+              <input name="go_source_dir" placeholder="C:\projects\myapp" />
+            </label>
+            <label>主包路径(main_pkg)
+              <input name="main_pkg" placeholder="./cmd/server 或 ." />
+            </label>
+            <label>ldflags
+              <input name="go_ldflags" placeholder="-s -w" />
+            </label>
+            <label class="check"><input type="checkbox" name="go_cgo_enabled" /> 启用 CGO(默认关闭,生成静态二进制)</label>
+          </div>
+          <div class="mode-panel hidden" id="panel-docker">
+            <p class="hint">Docker 构建:源码挂载到 <code>/src</code>,产物目录挂载到 <code>/out</code>。请把你的最终可执行文件写到 <code>$OUT_BIN</code>(即 <code>/out/bin/&lt;binary_name&gt;</code>)。</p>
+            <label class="full">源码目录<span class="req">*</span>
+              <input name="docker_source_dir" placeholder="C:\projects\myapp" />
+            </label>
+            <label>Docker 镜像
+              <input name="docker_image" placeholder="debian:bookworm-slim 或 synocommunity/spksrc" />
+            </label>
+            <label class="full">构建命令(docker_cmd)<span class="req">*</span>
+              <textarea name="docker_cmd" rows="3" placeholder="例如: gcc -static -o $OUT_BIN main.c"></textarea>
+            </label>
+          </div>
+          <div class="mode-panel hidden" id="panel-local">
+            <p class="hint">在本机执行命令,命令应把最终可执行文件输出到 <code>%OUT_BIN%</code>(Windows)或 <code>$OUT_BIN</code>(Linux),可用环境变量 <code>ARCH</code> 区分架构。</p>
+            <label class="full">源码目录(工作目录)
+              <input name="local_source_dir" placeholder="C:\projects\myapp" />
+            </label>
+            <label class="full">构建命令(local_cmd)<span class="req">*</span>
+              <textarea name="local_cmd" rows="3" placeholder="例如: copy /y release\app.exe %OUT_BIN%"></textarea>
+            </label>
+          </div>
+          <div class="mode-panel hidden" id="panel-spksrc">
+            <p class="hint">spksrc 需在 WSL2 的 Linux 环境里运行。先在 WSL2 里 <code>git clone https://github.com/SynoCommunity/spksrc</code>,再填下面参数。架构映射:x86_64→x64、arm64→aarch64、armv7→armv7。</p>
+            <label>WSL 发行版
+              <input name="wsl_distro" placeholder="Ubuntu" />
+            </label>
+            <label>DSM 版本(TCVERSION)
+              <input name="tcversion" placeholder="7.2" />
+            </label>
+            <label>spksrc 目录(Linux 内)
+              <input name="spksrc_dir" placeholder="~/spksrc" />
+            </label>
+            <label>包名(spk/ 下的目录名)
+              <input name="spksrc_pkg" placeholder="transmission" />
+            </label>
+          </div>
+        </section>
+
+        <!-- 运行配置 -->
+        <section>
+          <h2>④ 运行配置 / 权限(可选)</h2>
+          <div class="grid">
+            <label class="full">运行身份(run-as)
+              <div class="modes" style="flex-direction:row; gap:20px">
+                <label><input type="radio" name="run_as" value="root" checked /> root(最高权限)</label>
+                <label><input type="radio" name="run_as" value="package" /> 非 root(专用用户,DSM 7 推荐)</label>
+              </div>
+            </label>
+            <label class="full">运行用户名(非 root 时生效,留空则用包名)
+              <input name="run_user" placeholder="sc-mypkg(可选,SynoCommunity 惯例)" />
+            </label>
+            <label class="full">启动命令(start)
+              <textarea name="start_cmd" rows="2" placeholder="留空则默认运行 target/bin/&lt;binary_name&gt; 并记录 PID"></textarea>
+            </label>
+            <label class="full">停止命令(stop)
+              <textarea name="stop_cmd" rows="2" placeholder="留空则默认按 PID 文件 kill"></textarea>
+            </label>
+          </div>
+        </section>
+
+        <div class="actions">
+          <button type="submit" id="btnBuild">🚀 开始打包 / 构建</button>
+          <span class="status" id="status"></span>
+        </div>
+      </form>
+
+      <section id="result" class="hidden">
+        <h2>构建结果</h2>
+        <div id="downloads"></div>
+      </section>
+
+      <section id="logbox">
+        <div class="loghead">
+          <h2>构建日志</h2>
+          <button type="button" id="btnClearLog">清空</button>
+        </div>
+        <pre id="log"></pre>
+      </section>
+    </div>
+
+    <!-- ============ 解包页 ============ -->
+    <div id="page-unpack" class="page hidden">
+      <section>
+        <h2>📥 导入 .spk 解包</h2>
+        <div class="grid">
+          <label class="full">选择 .spk 文件
+            <input type="file" id="importFile" accept=".spk" />
+          </label>
+          <label class="full">或填写本地路径
+            <input id="importPath" placeholder="C:\path\to\foo.spk" />
+          </label>
+        </div>
+        <div class="actions">
+          <button type="button" id="btnImport">解包</button>
+          <span class="status" id="importStatus"></span>
+        </div>
+        <div id="importResult" class="hidden">
+          <h3 id="importTitle"></h3>
+          <div id="importInfo"></div>
+          <details open>
+            <summary>安装文件树(target/,来自 package.tgz)</summary>
+            <pre id="importTree"></pre>
+          </details>
+          <p class="hint">解包目录:<code id="importDir"></code></p>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ 使用说明页 ============ -->
+    <div id="page-help" class="page hidden">
+      <section class="help">
+        <h2>📖 使用说明</h2>
+
+        <h3>这是什么</h3>
+        <p>SPK 构建台是一个本地可视化工具,用于打包 / 构建群晖(Synology)套件 <code>.spk</code>,并支持拆包分析、修改后二次打包。产物可直接丢进 <code>sspks</code> 套件服务器分发。</p>
+
+        <h3>快速开始(打包一个纯脚本 / 静态目录)</h3>
+        <ol>
+          <li>「构建」页填 <b>① 套件信息</b>(名称、版本为必填);</li>
+          <li>勾 <b>② 目标架构</b>(纯脚本/静态选 <code>noarch</code>);</li>
+          <li><b>③ 构建方式</b>选「预编译 / 纯脚本」,源目录填你要打包的文件夹(内含 <code>bin/</code>、<code>ui/</code>、<code>conf/</code> 等);</li>
+          <li>点「🚀 开始打包」,下方看日志,完成后点下载 <code>.spk</code>。</li>
+        </ol>
+
+        <h3>五种构建方式</h3>
+        <ul>
+          <li><b>预编译 / 纯脚本</b>:已有二进制或脚本,直接打包,无需工具链;</li>
+          <li><b>Go</b>:本机 Go 交叉编译(需安装 Go),生成静态二进制;</li>
+          <li><b>Docker</b>:在容器里编译 C/C++ 等(需 Docker Desktop);</li>
+          <li><b>本地命令</b>:任意语言,自定义命令输出到 <code>%OUT_BIN%</code>;</li>
+          <li><b>spksrc</b>:SynoCommunity 交叉编译框架(需 WSL2 + Ubuntu)。</li>
+        </ul>
+
+        <h3>解包与二次打包</h3>
+        <ol>
+          <li>「解包」页上传或填 <code>.spk</code> 路径,点解包;</li>
+          <li>工具自动拆包、解析 INFO,并把元信息回填到构建表单;</li>
+          <li>自动跳到「构建」页,改字段后直接点构建即二次打包(scripts/图标/conf 原样保留)。</li>
+        </ol>
+
+        <h3>常见问题</h3>
+        <ul>
+          <li><b>顶部徽标显示 Go / Docker 未安装</b>:不影响「预编译/纯脚本」打包;只有用对应构建方式时才需要安装。</li>
+          <li><b>DSM 7 手动安装第三方包失败</b>:套件中心设置里把「信任级别」改为「任意发布者」。</li>
+          <li><b>spksrc 报 WSL 不可用</b>:管理员 PowerShell 运行 <code>wsl --install -d Ubuntu</code>,并在 Ubuntu 里 <code>git clone https://github.com/SynoCommunity/spksrc</code>。</li>
+          <li><b>运行身份 root / 非 root</b>:构建页「④ 运行配置」里选。选「非 root」会生成 <code>conf/privilege</code> 让 DSM 创建专用用户运行(DSM 7 推荐);选「root」则以最高权限运行。</li>
+          <li><b>启动提示端口被占用</b>:说明已有实例在运行,直接用提示的地址打开即可。</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <footer>产物输出目录:<code id="outputDir"></code></footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
