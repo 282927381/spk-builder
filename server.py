@@ -7,6 +7,7 @@ server.py — SPK 构建台(本地 Web 服务)。
 """
 import glob
 import hashlib
+import io
 import json
 import os
 import re
@@ -16,6 +17,7 @@ import traceback
 import urllib.parse
 import uuid
 import webbrowser
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import builders
@@ -104,6 +106,21 @@ def run_build(cfg, log):
     if cfg.get("os_min_ver"):
         info_fields["os_min_ver"] = cfg["os_min_ver"]
 
+    # Web 端口 / DSM UI 集成字段(决定套件中心是否显示「打开」按钮):
+    # 1) 优先采用前端显式传入的值;2) prebuilt 二次打包时自动从解包目录的 INFO 保留。
+    for f in spkpack.WEB_UI_FIELDS:
+        if cfg.get(f):
+            info_fields[f] = cfg[f]
+    if mode == "prebuilt" and source_dir and os.path.isfile(os.path.join(source_dir, "INFO")):
+        try:
+            with open(os.path.join(source_dir, "INFO"), "r", encoding="utf-8", errors="replace") as fh:
+                imported = spkpack.parse_info(fh.read())
+            for f in spkpack.WEB_UI_FIELDS:
+                if imported.get(f) and f not in info_fields:
+                    info_fields[f] = imported[f]
+        except Exception:  # noqa: BLE001
+            pass
+
     out_root = os.path.join(OUTPUT_DIR, "%s-%s" % (name, version))
     os.makedirs(out_root, exist_ok=True)
 
@@ -179,7 +196,45 @@ def run_build(cfg, log):
     return {"output_dir": out_root, "spks": results}
 
 
-def do_import_from_path(path, filename=None):
+def run_batch_build(items, log):
+    """批量构建:items 为完整构建配置列表,逐个调用 run_build。
+    单个包失败不影响后续,最终汇总成功/失败结果。"""
+    results = []
+    total = len(items)
+    for idx, item in enumerate(items, 1):
+        name = (item.get("name") or "").strip()
+        version = (item.get("version") or "").strip()
+        label = name + ((" v" + version) if version else "") or ("#%d" % idx)
+        log("")
+        log("=" * 62)
+        log("【%d/%d】构建套件: %s" % (idx, total, label))
+        log("=" * 62)
+        try:
+            r = run_build(item, log)
+            r["ok"] = True
+            r["label"] = label
+            r["name"] = name or ("pkg-%d" % idx)
+            results.append(r)
+        except Exception as e:  # noqa: BLE001
+            log("❌ 套件 %s 构建失败: %s" % (label, e))
+            results.append({"ok": False, "label": label, "error": str(e)})
+
+    ok_count = sum(1 for r in results if r.get("ok"))
+    log("")
+    log("#" * 62)
+    log("批量构建完成: 成功 %d / 失败 %d / 共 %d" % (ok_count, total - ok_count, total))
+    log("#" * 62)
+    return {"items": results, "ok": ok_count, "fail": total - ok_count, "total": total}
+
+
+def do_import_from_path(path, filename=None, log=None):
+    logs = []
+
+    def _log(m):
+        logs.append(m)
+        if log:
+            log(m)
+
     if not os.path.isfile(path):
         raise RuntimeError("文件不存在: %s" % path)
     stem = filename or path
@@ -190,12 +245,14 @@ def do_import_from_path(path, filename=None):
         base = base[:64] + "-" + suffix
     out_dir = os.path.join(OUTPUT_DIR, "_imported", base)
     if os.path.isdir(out_dir):
-        shutil.rmtree(out_dir)
-    res = spkpack.unpack_spk(path, out_dir)
+        spkpack.rmtree(out_dir)
+    res = spkpack.unpack_spk(path, out_dir, log=_log)
     res["dir"] = out_dir
     res["name"] = res["info"].get("package", "")
     res["version"] = res["info"].get("version", "")
     res["arch"] = spkpack.map_arch(res["info"].get("arch", ""))
+    _log("套件信息: %s v%s (架构: %s)" % (
+        res["name"] or "(未知)", res["version"] or "-", ",".join(res["arch"])))
     priv_path = os.path.join(out_dir, "conf", "privilege")
     if os.path.isfile(priv_path):
         try:
@@ -203,8 +260,10 @@ def do_import_from_path(path, filename=None):
                 p = json.loads(fh.read())
             res["run_as"] = (p.get("defaults") or {}).get("run-as", "")
             res["run_user"] = p.get("username", "")
+            _log("运行身份: %s (用户: %s)" % (res["run_as"], res["run_user"] or "-"))
         except Exception:
             pass
+    res["log"] = logs
     return res
 
 
@@ -226,6 +285,17 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/api/status":
             return self._json({"tools": builders.detect(), "output_dir": OUTPUT_DIR})
+        if path == "/api/changelog":
+            try:
+                p = os.path.join(BASE, "更新日志.txt")
+                raw = open(p, "rb").read()
+                try:
+                    content = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    content = raw.decode("gbk", errors="replace")
+                return self._json({"content": content})
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": str(e)}, 500)
         if path.startswith("/api/jobs/"):
             jid = path.split("/")[-1]
             job = JOBS.get(jid)
@@ -267,6 +337,51 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "请求体解析失败: %s" % e}, 400)
             jid = start_job(lambda log: run_build(cfg, log))
             return self._json({"job_id": jid})
+        if path == "/api/batch-build":
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                cfg = json.loads(self.rfile.read(n) or b"{}")
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": "请求体解析失败: %s" % e}, 400)
+            items = cfg.get("items") or []
+            if not items:
+                return self._json({"error": "批量任务列表为空"}, 400)
+            jid = start_job(lambda log: run_batch_build(items, log))
+            return self._json({"job_id": jid})
+        if path == "/api/batch-download":
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                cfg = json.loads(self.rfile.read(n) or b"{}")
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": "请求体解析失败: %s" % e}, 400)
+            files = cfg.get("files") or []
+            if not files:
+                return self._json({"error": "下载列表为空"}, 400)
+            buf = io.BytesIO()
+            added = 0
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for f in files:
+                    rel = str(f.get("path") or f.get("url") or "").lstrip("/")
+                    if rel.startswith("output/"):
+                        rel = rel[len("output/"):]
+                    fpath = os.path.abspath(os.path.join(OUTPUT_DIR, rel))
+                    if not fpath.startswith(os.path.abspath(OUTPUT_DIR)) or not os.path.isfile(fpath):
+                        continue
+                    folder = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(f.get("name") or "package")).strip() or "package"
+                    arcname = "%s-dsm7/%s" % (folder, os.path.basename(fpath))
+                    zf.write(fpath, arcname)
+                    added += 1
+            if added == 0:
+                return self._json({"error": "没有可下载的文件"}, 400)
+            data = buf.getvalue()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", 'attachment; filename="spk-packages-dsm7.zip"')
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if path == "/api/import":
             ctype = self.headers.get("Content-Type", "")
             n = int(self.headers.get("Content-Length", 0))
@@ -300,6 +415,45 @@ class Handler(BaseHTTPRequestHandler):
                         except OSError:
                             pass
                 return self._json(res)
+            except Exception as e:  # noqa: BLE001
+                return self._json({"error": str(e)}, 500)
+        if path == "/api/import-job":
+            ctype = self.headers.get("Content-Type", "")
+            n = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(n)
+            try:
+                if ctype.startswith("application/json"):
+                    cfg = json.loads(body or b"{}")
+                    p = (cfg.get("path") or "").strip()
+                    if not p:
+                        return self._json({"error": "请提供 .spk 路径(path)"}, 400)
+                    jid = start_job(lambda log: do_import_from_path(p, log=log))
+                    return self._json({"job_id": jid})
+                # 文件上传:临时文件在 job 执行完毕后再清理
+                fname = "upload.spk"
+                if "?" in self.path:
+                    params = urllib.parse.parse_qs(self.path.split("?", 1)[1])
+                    if params.get("filename"):
+                        fname = os.path.basename(params["filename"][0].replace("\\", "/"))
+                if not fname.lower().endswith(".spk"):
+                    fname += ".spk"
+                upload_dir = os.path.join(BASE, "uploads")
+                os.makedirs(upload_dir, exist_ok=True)
+                tmp = os.path.join(upload_dir, "upload-%s.spk" % uuid.uuid4().hex)
+                with open(tmp, "wb") as fh:
+                    fh.write(body)
+
+                def _run(log):
+                    try:
+                        return do_import_from_path(tmp, filename=fname, log=log)
+                    finally:
+                        try:
+                            os.remove(tmp)
+                        except OSError:
+                            pass
+
+                jid = start_job(_run)
+                return self._json({"job_id": jid})
             except Exception as e:  # noqa: BLE001
                 return self._json({"error": str(e)}, 500)
         self._json({"error": "not found"}, 404)

@@ -12,6 +12,10 @@ uploads/
 # 打包产物
 *.spk
 
+# 本地压缩归档(发布件走 release/*.zip)
+*.rar
+*.7z
+
 # 环境与编辑器
 .env
 .idea/

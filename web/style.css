@@ -186,7 +186,140 @@ details summary { cursor: pointer; color: #cbd5e1; margin: 10px 0 4px; }
 .help h3:first-of-type { margin-top: 4px; }
 .help p, .help li { font-size: 13.5px; color: var(--muted); }
 .help code { background: #0f172a; padding: 1px 6px; border-radius: 5px; color: #7dd3fc; }
+.help a { color: var(--accent); text-decoration: none; }
+.help a:hover { text-decoration: underline; }
 .help ol, .help ul { padding-left: 22px; margin: 4px 0; }
 .help li { margin: 5px 0; }
 footer { text-align: center; color: var(--muted); font-size: 13px; padding: 10px 0 30px; }
 footer code { color: #7dd3fc; }
+
+/* ==================== 批量页 ==================== */
+.batch-tools { display: flex; align-items: center; gap: 16px; }
+.batch-tools label.check { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; }
+button.ghost { background: var(--panel2); color: var(--text); padding: 6px 14px; font-size: 12px; }
+button.ghost:hover { background: #334155; }
+
+#batchList { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+.batch-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #223044;
+  border-bottom: 1px solid var(--border);
+}
+.card-head .card-select { width: 16px; height: 16px; cursor: pointer; }
+.card-title { font-weight: 600; color: var(--text); font-size: 14px; flex: 1; }
+.card-title em { color: var(--muted); font-style: normal; font-weight: 400; }
+.card-remove {
+  background: rgba(239, 68, 68, .12);
+  color: var(--bad);
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+.card-remove:hover { background: rgba(239, 68, 68, .22); }
+.card-body { padding: 14px; }
+.card-body .chips label { font-size: 12px; padding: 6px 10px; }
+
+.batch-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  color: #bfdbfe;
+  background: rgba(59, 130, 246, .1);
+  font-size: 14px;
+  font-weight: 600;
+}
+.batch-dl-bar { display: flex; align-items: center; gap: 14px; }
+.batch-dl-bar label.check { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; font-weight: 400; }
+.batch-dl-bar button { padding: 8px 16px; font-size: 13px; }
+.batch-res-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--panel2);
+}
+.batch-res-item.ok b { color: var(--ok); }
+.batch-res-item.fail b { color: var(--bad); }
+.batch-res-item b { font-size: 14px; display: block; margin-bottom: 8px; }
+.res-links { display: flex; flex-wrap: wrap; gap: 10px; }
+#batchDownloads .dl { padding: 8px 14px; font-size: 13px; }
+
+.dl-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--ok);
+  border-radius: 10px;
+  color: var(--ok);
+  background: rgba(34, 197, 94, .08);
+  cursor: pointer;
+  font-size: 13px;
+}
+.dl-check:hover { background: rgba(34, 197, 94, .16); }
+.dl-check input { width: 15px; height: 15px; cursor: pointer; }
+.dl-text { display: inline-flex; align-items: center; gap: 6px; }
+.dl-text small { color: var(--muted); }
+
+/* 批量修改单一信息 */
+.batch-edit-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 14px;
+  margin: 8px 0 4px;
+  background: var(--panel2);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.batch-edit-label { color: var(--warn); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.batch-edit-select, .batch-edit-input {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.batch-edit-select { min-width: 150px; }
+.batch-edit-input { flex: 1; min-width: 220px; }
+.batch-edit-select:focus, .batch-edit-input:focus { outline: none; border-color: var(--accent); }
+.batch-edit-bar .chips label { font-size: 12px; padding: 6px 10px; }
+#batchEditRunAs { display: flex; gap: 16px; }
+#batchEditRunAs label { flex-direction: row; align-items: center; gap: 6px; color: var(--text); font-size: 13px; cursor: pointer; }
+
+/* 更新日志 */
+.changelog .cl-version {
+  margin: 22px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  color: #7dd3fc;
+  font-size: 16px;
+}
+.changelog .cl-version:first-of-type { margin-top: 6px; }
+.changelog .cl-cat {
+  margin: 16px 0 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+.changelog ul { padding-left: 22px; margin: 6px 0; }
+.changelog li { margin: 6px 0; font-size: 13.5px; color: var(--muted); line-height: 1.6; }
+.changelog p { font-size: 13.5px; color: var(--muted); margin: 6px 0; line-height: 1.6; }

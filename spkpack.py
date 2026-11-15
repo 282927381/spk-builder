@@ -20,9 +20,82 @@ import tarfile
 EXEC_NAMES = {"start-stop-status", "run", "service"}
 EXEC_EXTS = {"", ".sh", ".py", ".pl", ".bash", ".cgi", ".rb", ".php"}
 
+# 架构 -> 群晖机型代号列表。写入 INFO 的 arch 字段,用于第三方套件源(如 sspks-imnks)
+# 按机型精确分发:家族代号放在最前(sspks-imnks 认 x86_64 / armv8),后面跟该家族所有
+# 具体机型代号,保证群晖任何具体机型都能匹配到。
+# 注意:sspks-imnks 用 armv8 而非 arm64,故 arm64 架构需同时写 armv8 / arm64 / aarch64。
+ARCH_MODELS = {
+    "x86_64": [
+        "x86_64", "bromolow", "cedarview", "avoton", "braswell", "broadwell",
+        "broadwellnk", "broadwellnkv2", "broadwellntbap", "apollolake",
+        "geminilake", "geminilakenk", "denverton", "v1000", "v1000nk",
+        "r1000", "r1000nk", "epyc7002", "epyc7003", "icelaked", "grantley",
+        "purley", "kvmx64", "dockerx64",
+    ],
+    "armv7": [
+        "armv7", "armada370", "armada375", "armada38x", "armadaxp", "alpine",
+        "alpine4k", "monaco", "comcerto2k", "hi3535",
+    ],
+    "arm64": [
+        "armv8", "arm64", "aarch64", "rtd1296", "rtd1619b", "armada37xx",
+        "armada8040", "rtd1293", "rtd1619",
+    ],
+    "noarch": ["noarch"],
+}
+
+
+def arch_field_value(arch):
+    """返回写入 INFO arch 字段的值:该架构家族代号 + 所有具体机型代号(空格分隔)。"""
+    models = ARCH_MODELS.get(arch)
+    if models:
+        return " ".join(models)
+    return arch
+
 
 def _norm(p):
     return p.replace(os.sep, "/")
+
+
+def _long_path(path):
+    """Windows 下为路径添加 \\\\?\\\\ 前缀,以支持超过 260 字符(MAX_PATH)的长路径。
+    fengoffice 等套件含超长文件名的资源,不解包/打包时 open()/stat() 会因路径过长报
+    [Errno 2] No such file or directory,本函数用于规避该限制。"""
+    if os.name != "nt":
+        return path
+    p = str(path)
+    if p.startswith("\\\\?\\"):
+        return p
+    return "\\\\?\\" + os.path.abspath(p).replace("/", "\\")
+
+
+def rmtree(path):
+    """删除目录树,兼容超长路径(Windows MAX_PATH)。重新导入套件时旧目录里可能
+    残留超长路径文件,直接 shutil.rmtree 会失败,这里用长路径前缀逐个删除。"""
+    if os.name != "nt":
+        shutil.rmtree(path, ignore_errors=True)
+        return
+    p = _long_path(path)
+    if not os.path.isdir(p):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+        return
+    for root, dirs, files in os.walk(p, topdown=False):
+        for f in files:
+            try:
+                os.remove(os.path.join(root, f))
+            except OSError:
+                pass
+        for d in dirs:
+            try:
+                os.rmdir(os.path.join(root, d))
+            except OSError:
+                pass
+    try:
+        os.rmdir(p)
+    except OSError:
+        pass
 
 
 def _is_exec(relpath):
@@ -41,14 +114,14 @@ def _is_exec(relpath):
 
 def add_file(tar, filepath, arcname, mode=None):
     """向 tar 添加一个文件,自动决定 0644/0755。"""
-    info = tar.gettarinfo(filepath, arcname=_norm(arcname))
+    info = tar.gettarinfo(_long_path(filepath), arcname=_norm(arcname))
     if mode is not None:
         info.mode = mode
     else:
         info.mode = 0o755 if _is_exec(arcname) else 0o644
     info.uid = info.gid = 0
     info.uname = info.gname = ""
-    with open(filepath, "rb") as fh:
+    with open(_long_path(filepath), "rb") as fh:
         tar.addfile(info, fh)
 
 
@@ -83,6 +156,26 @@ def render_info(fields):
         v = str(v).replace("\\", "\\\\").replace('"', '\\"')
         out.append('{k}="{v}"'.format(k=k, v=v))
     return "\n".join(out) + "\n"
+
+
+def parse_info(text):
+    """把 INFO 文本解析成字段字典(key -> 去除引号后的值)。"""
+    info = {}
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if "=" in line:
+            k, v = line.split("=", 1)
+            info[k.strip()] = v.strip().strip('"').strip()
+    return info
+
+
+# 与套件中心「打开」按钮 / DSM UI 集成相关的 INFO 字段。
+# adminport/adminprotocol/adminurl 组合成 adminprotocol://ip:adminport/adminurl 链接;
+# dsmuidir/dsmappname/dsmapppage/dsmapplaunchname 用于把套件 UI 集成进 DSM。
+WEB_UI_FIELDS = [
+    "adminport", "adminprotocol", "adminurl", "adminport_http", "adminport_https",
+    "dsmuidir", "dsmappname", "dsmapppage", "dsmapplaunchname", "checkport",
+]
 
 
 def render_start_stop_status(pkg, binary, start_cmd=None, stop_cmd=None):
@@ -142,10 +235,9 @@ def build_spk(output_dir, *, name, version, arch, info_fields, target_dir,
               scripts_dir=None, icons_dir=None, binary=None,
               start_cmd=None, stop_cmd=None, extra_dir=None,
               run_as=None, run_user=None):
-    """把 target_dir 打包为 <output_dir>/<name>[-arch]-<version>.spk,返回 spk 路径。"""
+    """把 target_dir 打包为 <output_dir>/<name>_<arch>-<version>.spk,返回 spk 路径。"""
     os.makedirs(output_dir, exist_ok=True)
-    arch_suffix = "" if arch in ("noarch", "all") else ("-" + arch)
-    spk_name = "{n}{a}-{v}.spk".format(n=name, a=arch_suffix, v=version)
+    spk_name = "{n}_{a}-{v}.spk".format(n=name, a=arch, v=version)
     spk_path = os.path.join(output_dir, spk_name)
     tmp_tgz = os.path.join(output_dir, "." + spk_name + ".package.tgz")
     stage = os.path.join(output_dir, "." + spk_name + ".stage")
@@ -162,7 +254,7 @@ def build_spk(output_dir, *, name, version, arch, info_fields, target_dir,
     info_fields = dict(info_fields)
     info_fields.setdefault("package", name)
     info_fields.setdefault("version", version)
-    info_fields.setdefault("arch", arch)
+    info_fields.setdefault("arch", arch_field_value(arch))
     info_fields.setdefault("os_min_ver", "7.0-40000")
     with open(os.path.join(stage, "INFO"), "w", encoding="utf-8") as fh:
         fh.write(render_info(info_fields))
@@ -232,12 +324,18 @@ def build_spk(output_dir, *, name, version, arch, info_fields, target_dir,
     return spk_path
 
 
-def unpack_spk(spk_path, out_dir):
+def unpack_spk(spk_path, out_dir, log=None):
     """解包 .spk 为「可二次打包」的工程目录:
     外层文件(INFO/package.tgz/scripts/图标/conf 等)-> out_dir/ 根目录,
     内层 package.tgz -> out_dir/target/。
     返回 {"info": {key:value}, "outer": [..], "target": [..]}。"""
     import io
+
+    def _log(m):
+        if log:
+            log(m)
+
+    _log("解包: %s" % os.path.basename(spk_path))
     os.makedirs(out_dir, exist_ok=True)
     target_dir = os.path.join(out_dir, "target")
     os.makedirs(target_dir, exist_ok=True)
@@ -251,8 +349,8 @@ def unpack_spk(spk_path, out_dir):
         target = os.path.abspath(os.path.join(dest_base, arcname))
         if not (target == base or target.startswith(base + os.sep)):
             return False
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "wb") as fh:
+        os.makedirs(_long_path(os.path.dirname(target)), exist_ok=True)
+        with open(_long_path(target), "wb") as fh:
             fh.write(data)
         return True
 
@@ -276,6 +374,7 @@ def unpack_spk(spk_path, out_dir):
             data = f.read()
             if m.name == "INFO":
                 _safe_write(out_dir, "INFO", data)
+                _log("  提取 INFO")
                 for line in data.decode("utf-8", "replace").splitlines():
                     line = line.strip()
                     if "=" in line:
@@ -283,23 +382,30 @@ def unpack_spk(spk_path, out_dir):
                         info[k.strip()] = v.strip().strip('"').strip()
             elif m.name == "package.tgz":
                 _safe_write(out_dir, "package.tgz", data)
+                _log("  提取 package.tgz -> target/")
                 with tarfile.open(fileobj=io.BytesIO(data), mode="r:*") as tgz:
                     _extract(tgz, target_dir, target_files)
+                _log("    目标文件 %d 个" % len(target_files))
             else:
                 if m.issym() or m.islnk():
                     continue
                 if _safe_write(out_dir, m.name, data):
                     outer_files.append(m.name)
+                    _log("  提取外层文件: %s" % m.name)
 
+    _log("解包完成: 外层 %d 个文件, 目标 %d 个文件 -> %s" % (len(outer_files), len(target_files), out_dir))
     return {"info": info, "outer": sorted(outer_files), "target": sorted(target_files)}
 
 
 _X86 = {"x86_64", "x86", "i686", "bromolow", "cedarview", "broadwell", "avoton",
-        "braswell", "apollolake", "geminilake", "denverton", "v1000", "r1000",
-        "epyc7002", "broadwellnk", "grantley", "purley", "kvmx64"}
-_ARM64 = {"arm64", "aarch64", "rtd1619b", "rtd1296", "rtd1293", "armada8040"}
+        "braswell", "apollolake", "geminilake", "geminilakenk", "denverton",
+        "v1000", "v1000nk", "r1000", "r1000nk", "epyc7002", "epyc7003",
+        "icelaked", "broadwellnk", "broadwellnkv2", "broadwellntbap",
+        "grantley", "purley", "kvmx64", "dockerx64"}
+_ARM64 = {"arm64", "armv8", "aarch64", "rtd1619b", "rtd1296", "rtd1293",
+          "armada8040", "armada37xx", "rtd1619"}
 _ARM = {"armv7", "armv7l", "armada370", "armada375", "armada38x", "armadaxp",
-        "alpine", "alpine4k", "monaco", "hi3535", "comcerto2k", "armada37xx"}
+        "alpine", "alpine4k", "monaco", "hi3535", "comcerto2k"}
 
 
 def map_arch(arch_str):

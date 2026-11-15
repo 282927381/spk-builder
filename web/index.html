@@ -21,7 +21,10 @@
   <nav class="navbar">
     <button class="navtab active" data-tab="build">🚀 构建</button>
     <button class="navtab" data-tab="unpack">📥 解包</button>
+    <button class="navtab" data-tab="batch">📦 批量</button>
     <button class="navtab" data-tab="help">📖 使用说明</button>
+    <button class="navtab" data-tab="changelog">📜 更新日志</button>
+    <button class="navtab" data-tab="about">ℹ️ 关于项目</button>
   </nav>
 
   <main>
@@ -78,11 +81,15 @@
         <section>
           <h2>② 目标架构(可多选,每种架构生成一个 .spk)</h2>
           <div class="chips" id="archs">
-            <label><input type="checkbox" name="arch" value="x86_64" checked /> x86_64 <small>Intel/AMD 机型</small></label>
-            <label><input type="checkbox" name="arch" value="armv7" /> armv7 <small>老 ARM 机型</small></label>
-            <label><input type="checkbox" name="arch" value="arm64" /> arm64 <small>新 ARM 机型</small></label>
+            <label><input type="checkbox" name="arch" value="x86_64" checked /> x86_64
+              <small title="bromolow cedarview avoton braswell broadwell broadwellnk broadwellnkv2 broadwellntbap apollolake geminilake geminilakenk denverton v1000 v1000nk r1000 r1000nk epyc7002 epyc7003 icelaked grantley purley kvmx64 dockerx64">Intel/AMD 全机型</small></label>
+            <label><input type="checkbox" name="arch" value="armv7" /> armv7
+              <small title="armada370 armada375 armada38x armadaxp alpine alpine4k monaco comcerto2k hi3535">老 ARM 机型</small></label>
+            <label><input type="checkbox" name="arch" value="arm64" /> arm64
+              <small title="armv8/aarch64: rtd1296 rtd1619b armada37xx armada8040 rtd1293 rtd1619">新 ARM 机型(armv8)</small></label>
             <label><input type="checkbox" name="arch" value="noarch" /> noarch <small>纯脚本/静态,通用</small></label>
           </div>
+          <p class="hint">每个架构会自动在 INFO 里写入对应的全部机型代号(家族 + 具体机型),以便第三方套件源(如 sspks-imnks)按机型精确分发。</p>
         </section>
 
         <!-- 构建方式 -->
@@ -220,6 +227,99 @@
           <p class="hint">解包目录:<code id="importDir"></code></p>
         </div>
       </section>
+
+      <section id="unpackLogbox" class="hidden">
+        <div class="loghead">
+          <h2>解包日志</h2>
+          <button type="button" id="btnClearUnpackLog" class="ghost">清空</button>
+        </div>
+        <pre id="unpackLog"></pre>
+      </section>
+    </div>
+
+    <!-- ============ 批量页 ============ -->
+    <div id="page-batch" class="page hidden">
+      <section>
+        <h2>① 批量解包（一次导入多个 .spk）</h2>
+        <div class="grid">
+          <label class="full">选择多个 .spk 文件（可多选）
+            <input type="file" id="batchFile" accept=".spk" multiple />
+          </label>
+          <label class="full">或填写本地路径（每行一个）
+            <textarea id="batchPaths" rows="3" placeholder="C:\path\to\a.spk&#10;C:\path\to\b.spk"></textarea>
+          </label>
+        </div>
+        <div class="actions">
+          <button type="button" id="btnBatchImport">📥 批量解包</button>
+          <span class="status" id="batchImportStatus"></span>
+        </div>
+      </section>
+
+      <section id="batchTasks" class="hidden">
+        <div class="loghead">
+          <h2>② 批量任务（每个包可独立配置信息）</h2>
+          <div class="batch-tools">
+            <label class="check"><input type="checkbox" id="batchSelectAll" checked /> 全选</label>
+            <button type="button" id="btnBatchClear" class="ghost">清空列表</button>
+          </div>
+        </div>
+
+        <div class="batch-edit-bar">
+          <span class="batch-edit-label">⚡ 批量修改:</span>
+          <select id="batchEditField" class="batch-edit-select">
+            <option value="name">套件标识</option>
+            <option value="version">版本</option>
+            <option value="displayname">显示名称</option>
+            <option value="displayname_chs">中文显示名</option>
+            <option value="description">描述</option>
+            <option value="description_chs">中文描述</option>
+            <option value="maintainer">维护者</option>
+            <option value="maintainer_url">维护者网址</option>
+            <option value="distributor">发行者</option>
+            <option value="distributor_url">发行者网址</option>
+            <option value="support_url">支持网址</option>
+            <option value="binary_name">运行程序名</option>
+            <option value="os_min_ver">最低 DSM 版本</option>
+            <option value="run_user">运行用户名</option>
+            <option value="start_cmd">启动命令</option>
+            <option value="stop_cmd">停止命令</option>
+            <option value="archs">目标架构</option>
+            <option value="run_as">运行身份</option>
+          </select>
+          <input id="batchEditValue" class="batch-edit-input" placeholder="输入新值，应用到全部（留空=清空该字段）" />
+          <div id="batchEditArchs" class="chips hidden">
+            <label><input type="checkbox" class="arch-edit-opt" value="x86_64" /> x86_64</label>
+            <label><input type="checkbox" class="arch-edit-opt" value="armv7" /> armv7</label>
+            <label><input type="checkbox" class="arch-edit-opt" value="arm64" /> arm64</label>
+            <label><input type="checkbox" class="arch-edit-opt" value="noarch" /> noarch</label>
+          </div>
+          <div id="batchEditRunAs" class="hidden">
+            <label><input type="radio" name="batch-edit-runas" value="root" checked /> root(最高权限)</label>
+            <label><input type="radio" name="batch-edit-runas" value="package" /> 非 root(DSM 7 推荐)</label>
+          </div>
+          <button type="button" id="btnBatchEdit" class="ghost">应用到全部</button>
+          <span class="status" id="batchEditStatus"></span>
+        </div>
+
+        <div id="batchList"></div>
+        <div class="actions" style="margin-top:14px">
+          <button type="button" id="btnBatchBuild">🚀 批量构建（选中项）</button>
+          <span class="status" id="batchStatus"></span>
+        </div>
+      </section>
+
+      <section id="batchResult" class="hidden">
+        <h2>③ 批量构建结果</h2>
+        <div id="batchDownloads"></div>
+      </section>
+
+      <section id="batchLogbox" class="hidden">
+        <div class="loghead">
+          <h2>批量构建日志</h2>
+          <button type="button" id="btnBatchClearLog" class="ghost">清空</button>
+        </div>
+        <pre id="batchLog"></pre>
+      </section>
     </div>
 
     <!-- ============ 使用说明页 ============ -->
@@ -228,7 +328,7 @@
         <h2>📖 使用说明</h2>
 
         <h3>这是什么</h3>
-        <p>SPK 构建台是一个本地可视化工具,用于打包 / 构建群晖(Synology)套件 <code>.spk</code>,并支持拆包分析、修改后二次打包。产物可直接丢进 <code>sspks</code> 套件服务器分发。</p>
+        <p>SPK 构建台是一个本地可视化工具,用于打包 / 构建群晖(Synology)套件 <code>.spk</code>,并支持拆包分析、修改后二次打包、批量处理。产物可直接配合 <code>sspks</code> 套件服务器(如 sspks-imnks)分发,并按群晖机型精确匹配。</p>
 
         <h3>快速开始(打包一个纯脚本 / 静态目录)</h3>
         <ol>
@@ -253,6 +353,25 @@
           <li>工具自动拆包、解析 INFO,并把元信息回填到构建表单;</li>
           <li>自动跳到「构建」页,改字段后直接点构建即二次打包(scripts/图标/conf 原样保留)。</li>
         </ol>
+        <p>带 Web UI 的套件,其 <code>adminport</code> / <code>adminprotocol</code> / <code>dsmuidir</code> / <code>dsmappname</code> 等字段会在二次打包时自动写回,群晖套件中心仍会显示「打开」按钮。</p>
+
+        <h3>批量处理</h3>
+        <ol>
+          <li>「批量」页可一次多选多个 <code>.spk</code> 文件,或每行填一个本地路径,点批量解包;</li>
+          <li>每个包生成一张独立卡片,可单独改套件标识、版本、描述、维护者、架构、运行身份等;</li>
+          <li>可用「⚡ 批量修改」把某个字段一次性同步到所有包(如统一改版本号、维护者);</li>
+          <li>勾选要构建的包,点「🚀 批量构建」,逐个打包,单个失败不影响其他包;</li>
+          <li>结果区勾选后点「批量下载」一键下载,默认按镜像站支持的机型勾选,打包成 zip 并按 <code>&lt;软件名&gt;-dsm7/</code> 文件夹分类存放。</li>
+        </ol>
+
+        <h3>机型命名与分发</h3>
+        <p>构建时每个 .spk 会在 INFO 的 <code>arch</code> 字段自动写入该架构的全部机型代号(家族 + 具体机型),群晖套件中心按你的具体机型自动匹配:</p>
+        <ul>
+          <li><code>x86_64</code> → 覆盖全部 Intel/AMD 机型(bromolow、geminilake、denverton、v1000 等);</li>
+          <li><code>arm64</code> → 同时写 <code>armv8</code>/<code>arm64</code>/<code>aarch64</code>(适配 sspks-imnks 的 armv8 家族);</li>
+          <li><code>armv7</code> → 覆盖老 ARM 机型(armada38x、alpine 等);</li>
+          <li><code>noarch</code> → 所有机型通用。</li>
+        </ul>
 
         <h3>常见问题</h3>
         <ul>
@@ -261,6 +380,89 @@
           <li><b>spksrc 报 WSL 不可用</b>:管理员 PowerShell 运行 <code>wsl --install -d Ubuntu</code>,并在 Ubuntu 里 <code>git clone https://github.com/SynoCommunity/spksrc</code>。</li>
           <li><b>运行身份 root / 非 root</b>:构建页「④ 运行配置」里选。选「非 root」会生成 <code>conf/privilege</code> 让 DSM 创建专用用户运行(DSM 7 推荐);选「root」则以最高权限运行。</li>
           <li><b>启动提示端口被占用</b>:说明已有实例在运行,直接用提示的地址打开即可。</li>
+          <li><b>ARM 机型包上传源后识别不到</b>:构建时选 <code>arm64</code>(会自动写 <code>armv8</code>);<code>armv7</code> 若源未收录该家族,可在结果区手动勾选下载。</li>
+          <li><b>批量下载提示多文件</b>:浏览器可能提示「允许多文件下载」,允许一次即可。</li>
+        </ul>
+      </section>
+    </div>
+
+    <!-- ============ 更新日志页 ============ -->
+    <div id="page-changelog" class="page hidden">
+      <section class="help">
+        <h2>📜 更新日志</h2>
+        <div id="changelogContent" class="changelog">加载中…</div>
+      </section>
+    </div>
+
+    <!-- ============ 关于项目页 ============ -->
+    <div id="page-about" class="page hidden">
+      <section class="help">
+        <h2>ℹ️ 关于项目</h2>
+
+        <h3>SPK 构建台</h3>
+        <p>一个本地可视化的群晖(Synology)套件 <code>.spk</code> 打包 / 构建 / 解包工具。支持多语言、多架构交叉编译,以及拆包分析、修改后二次打包,产物可配合 <code>sspks</code> 套件服务器分发。</p>
+
+        <h3>项目仓库</h3>
+        <ul>
+          <li>源码:<a href="https://github.com/282927381/spk-builder" target="_blank" rel="noopener">github.com/282927381/spk-builder</a></li>
+          <li>许可证:GPL-3.0</li>
+        </ul>
+
+        <h3>主要能力</h3>
+        <ul>
+          <li>🚀 <b>打包 / 构建</b>:预编译、Go、Docker、本地命令、spksrc 五种方式;</li>
+          <li>📥 <b>解包</b>:拆开现成 .spk,解析 INFO 与文件树,并回填表单二次打包;</li>
+          <li>📦 <b>批量</b>:批量解包、批量改信息、批量构建、批量下载;</li>
+          <li>🎯 <b>多架构</b>:x86_64 / armv7 / arm64 / noarch;</li>
+          <li>🏷️ <b>机型分发</b>:自动写入群晖机型代号,适配 sspks-imnks 等第三方源;</li>
+          <li>🛡️ <b>运行权限</b>:root / 非 root(自动生成 conf/privilege);</li>
+          <li>⚡ <b>零依赖</b>:纯 Python 标准库 + 原生前端,无需安装任何框架。</li>
+        </ul>
+
+        <h3>技术栈</h3>
+
+        <p><b>后端(Python 3,纯标准库,零第三方依赖)</b></p>
+        <ul>
+          <li>HTTP 服务:<code>http.server</code>(ThreadingHTTPServer + BaseHTTPRequestHandler)</li>
+          <li>打包 / 解包:<code>tarfile</code> + <code>gzip</code>(生成 .spk 与 package.tgz)</li>
+          <li>配置生成:<code>json</code>(INFO、conf/privilege)</li>
+          <li>构建调度:<code>subprocess</code>(调用 Go / Docker / WSL)、<code>threading</code>(后台任务)</li>
+          <li>图标生成:<code>Pillow(PIL)</code>(可选,缺失时跳过占位图)</li>
+          <li>其他标准库:<code>uuid</code>、<code>webbrowser</code>、<code>urllib.parse</code>、<code>socket</code>、<code>shutil</code>、<code>glob</code></li>
+        </ul>
+
+        <p><b>前端(原生 Web,无框架、无构建步骤)</b></p>
+        <ul>
+          <li>HTML5 + CSS3(Grid / Flexbox 布局,深色主题)</li>
+          <li>JavaScript ES6+(Fetch API、async/await、FileReader 上传)</li>
+          <li>单页应用:页签路由(构建 / 解包 / 批量 / 使用说明 / 更新日志 / 关于)</li>
+        </ul>
+
+        <p><b>外部工具链(按需自动检测,非必需)</b></p>
+        <ul>
+          <li>Go(本机交叉编译,GOOS=linux 生成静态二进制)</li>
+          <li>Docker(容器内编译 C/C++ 等)</li>
+          <li>WSL2 + SynoCommunity/spksrc(群晖交叉编译框架)</li>
+          <li>Rust / cargo(检测)</li>
+        </ul>
+
+        <p><b>目标平台 / 格式</b></p>
+        <ul>
+          <li>Synology DSM 套件格式:<code>.spk</code>(INFO + package.tgz + scripts + conf/privilege)</li>
+          <li>多架构:x86_64 / armv7 / arm64 / noarch,自动映射群晖机型代号(arm64→armv8/aarch64 等)</li>
+        </ul>
+
+        <p><b>启动方式</b></p>
+        <ul>
+          <li>Windows:双击 <code>run.bat</code>(内置 Python)</li>
+          <li>跨平台:<code>python server.py</code>(需 Python 3)</li>
+        </ul>
+
+        <h3>参考与致谢</h3>
+        <ul>
+          <li>Synology 官方 <a href="https://help.synology.cn/developer-guide/synology_package/introduction.html" target="_blank" rel="noopener">Package Developer Guide</a></li>
+          <li><a href="https://github.com/SynoCommunity/spksrc" target="_blank" rel="noopener">SynoCommunity/spksrc</a> 交叉编译框架</li>
+          <li><a href="https://github.com/tbc0309/sspks-imnks" target="_blank" rel="noopener">tbc0309/sspks-imnks</a> 套件服务器</li>
         </ul>
       </section>
     </div>
