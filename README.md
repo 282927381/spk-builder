@@ -1,63 +1,65 @@
-# SPK 构建台
+# SPK Builder
 
-一个**可视化 Web 操作台**,用来打包 / 构建群晖(Synology)套件安装包 `.spk`。
-支持多种语言、多种架构,点几下就能出包,并可直接配合 [tbc0309/sspks-imnks](https://github.com/tbc0309/sspks-imnks) 套件服务器分发。
+**English** | [简体中文](README_zh_cn.md)
 
-## 能做什么
+A **visual web console** for packaging / building Synology package installers (`.spk`).
+It supports multiple languages and multiple architectures — a few clicks and you have a package — and works directly with an [tbc0309/sspks-imnks](https://github.com/tbc0309/sspks-imnks) package server for distribution.
 
-| 能力 | 说明 |
+## What it can do
+
+| Capability | Description |
 | --- | --- |
-| 打包 .spk | 生成完整的 `INFO` + `package.tgz` + `scripts/` + 图标,标准结构 |
-| 多架构 | 一次勾选 `x86_64 / armv7 / arm64 / noarch`,每种架构出一个 .spk |
-| 多语言构建 | Go(本机交叉编译)、Docker(C/C++ 等)、本地命令(任意语言)、预编译打包 |
-| 可视化 | Web 表单填参数 + 实时构建日志 + 产物下载 |
-| 零依赖可用 | 打包功能只用内置 Python 标准库,无需安装任何东西 |
+| Package `.spk` | Generates a complete `INFO` + `package.tgz` + `scripts/` + icons, in the standard layout |
+| Multi-architecture | Tick `x86_64 / armv7 / arm64 / noarch` once and get one `.spk` per architecture |
+| Multi-language builds | Go (native cross-compile), Docker (C/C++ etc.), local command (any language), prebuilt packaging |
+| Visual UI | Web form for parameters + live build logs + artifact download |
+| Zero dependencies to start | Packaging only uses the bundled Python standard library — nothing to install |
 
-## 一键启动
+## Quick start
 
-双击 `run.bat`,会自动打开浏览器 `http://127.0.0.1:8800`。
+Double-click `run.bat`; it opens the browser at `http://127.0.0.1:8800`.
 
-手动启动(任意有 Python 3 的环境):
+Manual start (any environment with Python 3):
 
 ```bash
 python server.py
 ```
 
-## 使用步骤
+## Usage
 
-1. 打开 `http://127.0.0.1:8800`。
-2. 顶部导航分四个页签:
-   - **🚀 构建**:填写套件信息、架构、构建方式,出包;
-   - **📥 解包**:导入现成 .spk 拆开分析,并自动回填到构建表单以便二次打包;
-   - **📦 批量**:一次导入多个 .spk 解包、逐个独立改信息、一键批量重新打包;
-   - **📖 使用说明**:内置使用说明与常见问题;
-   - **📜 更新日志**:展示版本更新记录(自动读取 `更新日志.txt`)。
-3. 在「构建」页填写**套件信息**(名称、版本、描述、维护者等)。
-4. 勾选**目标架构**(多选)。
-5. 选择**构建方式**并填写相应参数(见下)。
-6. 点 **🚀 开始打包 / 构建**,实时显示日志,完成后点击下载 .spk。
+1. Open `http://127.0.0.1:8800`.
+2. The top navigation has five tabs:
+   - **🚀 Build**: fill in package info, architectures and build method, then build;
+   - **📥 Unpack**: import an existing `.spk`, inspect it, and auto-fill the build form for repackaging;
+   - **📦 Batch**: import several `.spk` files at once, edit each independently, repackage them all;
+   - **📖 Help**: built-in usage guide and FAQ;
+   - **📜 Changelog**: version history (read automatically from `更新日志.txt`).
+3. Fill in the **package info** (name, version, description, maintainer, …).
+4. Tick the **target architectures** (multi-select).
+5. Choose a **build method** and fill in its parameters (see below).
+6. Click **🚀 Start packaging / building**, watch the live log, then download the `.spk`.
 
-产物统一保存在 `output/<名称>-<版本>/` 目录下。
+All artifacts are written to `output/<name>-<version>/`.
 
-## 五种构建方式
+## Five build methods
 
-### ① 预编译 / 纯脚本(prebuilt,默认,无需任何工具链)
+### ① Prebuilt / plain scripts (default, no toolchain required)
 
-把要安装的文件放进一个目录,目录结构直接对应安装后的 `target/`:
+Put the files you want to install into a directory whose layout matches the installed `target/`:
 
 ```
 mypkg/
 ├── bin/
-│   └── myapp          # 可执行文件(会被打包成 0755)
-├── ui/                # 可选:DSM UI 文件
-├── conf/              # 可选:配置文件
-├── scripts/           # 可选:自定义生命周期脚本(缺失会自动生成)
-├── PACKAGE_ICON.PNG       # 可选:图标,缺失自动生成占位图
+│   └── myapp          # executable (packed with mode 0755)
+├── ui/                # optional: DSM UI files
+├── conf/              # optional: configuration files
+├── scripts/           # optional: custom lifecycle scripts (auto-generated if missing)
+├── PACKAGE_ICON.PNG       # optional: icon; a placeholder is generated if missing
 └── PACKAGE_ICON_256.PNG
 ```
 
-- **单架构**:直接把目录填进“源目录”。
-- **多架构**:在源目录下按架构建子目录放各自二进制:
+- **Single architecture**: point "source directory" at the directory itself.
+- **Multiple architectures**: add per-architecture subdirectories with their own binaries:
   ```
   mypkg/
   ├── x86_64/bin/myapp
@@ -65,117 +67,119 @@ mypkg/
   └── arm64/bin/myapp
   ```
 
-### ② Go(本机交叉编译)
+### ② Go (native cross-compilation)
 
-需要本机安装 [Go](https://go.dev/dl/)(选 Windows 版安装,或解压便携版并加入 PATH)。
-会以 `CGO_ENABLED=0` 生成**静态二进制**,对群晖最友好。
+Requires [Go](https://go.dev/dl/) installed locally (Windows installer, or unzip the portable build and add it to `PATH`).
+Builds with `CGO_ENABLED=0`, producing **static binaries** — the friendliest option for Synology.
 
-- 源码目录 = 你的 Go module 根目录
-- 主包路径 = 如 `./cmd/server` 或 `.`
-- 每个架构自动用 `GOOS=linux GOARCH=...` 编译
+- Source directory = the root of your Go module
+- Main package path = e.g. `./cmd/server` or `.`
+- Each architecture is compiled with `GOOS=linux GOARCH=...`
 
-### ③ Docker(C/C++ 等任意编译)
+### ③ Docker (any compilation: C/C++, …)
 
-需要 [Docker Desktop](https://www.docker.com/products/docker-desktop/)(启用 Linux 容器)。
-源码挂载到容器内 `/src`,产物目录挂载到 `/out`;你的命令要把最终可执行文件写到 **`$OUT_BIN`**(即 `/out/bin/<binary_name>`)。
+Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) with Linux containers enabled.
+The source is mounted at `/src` and the output directory at `/out`; your command must write the final executable to **`$OUT_BIN`** (i.e. `/out/bin/<binary_name>`).
 
-示例(编译一个静态 C 程序):
+Example (compiling a static C program):
 
-- Docker 镜像:`debian:bookworm-slim`
-- 构建命令:`apt-get update && apt-get install -y gcc && gcc -static -o $OUT_BIN main.c`
+- Docker image: `debian:bookworm-slim`
+- Build command: `apt-get update && apt-get install -y gcc && gcc -static -o $OUT_BIN main.c`
 
-> 群晖原生工具链可用官方镜像 `synocommunity/spksrc`(较重量级,适合真正需要群晖 libc 的场景)。
+> For the native Synology toolchain you can use the official `synocommunity/spksrc` image (heavyweight; meant for cases that really need Synology's libc).
 
-### ④ 本地命令(任意语言)
+### ④ Local command (any language)
 
-在本机执行一条命令,把最终可执行文件写到 `%OUT_BIN%`(Windows)/ `$OUT_BIN`(Linux),
-可用环境变量 `ARCH` 区分架构。适合已有编译脚本的场景。
+Runs one command on this machine; it must write the final executable to `%OUT_BIN%` (Windows) / `$OUT_BIN` (Linux).
+The `ARCH` environment variable tells you which architecture is being built. Good when you already have a build script.
 
-### ⑤ spksrc(SynoCommunity 交叉编译)
+### ⑤ spksrc (SynoCommunity cross-compilation)
 
-用官方 [spksrc](https://github.com/SynoCommunity/spksrc) 框架给群晖编译原生程序(C/C++、Rust、Go 等),
-自带各机型/各 DSM 版本的交叉工具链。**前提**:已在 WSL2 里装好 Linux 发行版,并 clone 了 spksrc 仓库。
+Uses the official [spksrc](https://github.com/SynoCommunity/spksrc) framework to build native packages (C/C++, Rust, Go, …) for Synology, with toolchains for every model / DSM version.
+**Prerequisite**: a Linux distribution installed in WSL2 with the spksrc repository cloned.
 
-1. 管理员 PowerShell 安装 WSL2:`wsl --install -d Ubuntu`(首次可能要重启);
-2. 进入 Ubuntu,克隆仓库:`git clone https://github.com/SynoCommunity/spksrc`;
-3. 在页面上「构建方式」选 **spksrc**,填:
-   - WSL 发行版:默认 `Ubuntu`
-   - DSM 版本:如 `7.2`
-   - spksrc 目录:如 `~/spksrc`
-   - 包名:`spk/` 下的目录名,如 `transmission`、`ffmpeg`
-4. 勾选目标架构(自动映射:x86_64→x64、arm64→aarch64、armv7→armv7),点构建。
+1. In an elevated PowerShell install WSL2: `wsl --install -d Ubuntu` (a reboot may be required the first time);
+2. In Ubuntu, clone the repository: `git clone https://github.com/SynoCommunity/spksrc`;
+3. On the page choose build method **spksrc** and fill in:
+   - WSL distribution: `Ubuntu` by default
+   - DSM version: e.g. `7.2`
+   - spksrc directory: e.g. `~/spksrc`
+   - Package name: the directory under `spk/`, e.g. `transmission`, `ffmpeg`
+4. Tick the target architectures (mapped automatically: x86_64→x64, arm64→aarch64, armv7→armv7) and build.
 
-产物由 spksrc 直接生成并自动拷回 Windows 的 `output/` 目录,可直接下载。
+spksrc produces the artifacts itself and copies them back to `output/` on Windows, ready to download.
 
-> spksrc 官方 Docker 方案不支持 Windows(符号链接/权限问题),所以这里通过 WSL2 的原生构建来跑。
+> The official spksrc Docker setup does not work on Windows (symlink/permission issues), which is why this uses a native WSL2 build instead.
 
-## 批量解包 / 批量改信息 / 批量构建
+## Batch unpack / batch edit / batch build
 
-页面顶部「📦 批量」页签用于**一次性处理多个 .spk**:
+The **📦 Batch** tab handles **many `.spk` files at once**:
 
-1. **批量解包**:多选本地 `.spk` 文件,或在文本框里每行填一个本地路径,点「批量解包」;
-2. **独立配置**:每个包生成一张可编辑卡片,可单独改套件标识、版本、显示名、描述、维护者、架构、运行身份、源目录等;
-3. **批量改单一信息**:卡片上方有「⚡ 批量修改」工具条,选择要改的字段(如版本/维护者/描述/架构/运行身份等),填一次值点「应用到全部」,即可一次性同步到所有包;
-4. **批量构建**:勾选要构建的包(或全选),点「🚀 批量构建」,逐个打包,单个失败不影响其他包;
-5. 结束后汇总显示每个包的成功/失败与下载链接,支持**勾选后批量下载**;每个 .spk 默认按镜像站支持的机型(架构)自动勾选,未支持的架构(如 armv7)默认不勾选,可手动调整;
-6. 批量下载会把勾选的包打包成一个 zip,并按 `<软件名>-dsm7/` 文件夹分类存放,解压后即可直接丢进 sspks 源。
+1. **Batch unpack**: select several local `.spk` files, or paste one local path per line, then click "Batch unpack";
+2. **Independent configuration**: each package gets its own editable card — package ID, version, display name, description, maintainer, architectures, run identity, source directory, and so on;
+3. **Batch edit a single field**: the "⚡ Batch edit" toolbar above the cards lets you pick one field (version / maintainer / description / architecture / run identity, …), enter a value once and apply it to every package;
+4. **Batch build**: tick the packages to build (or select all) and click "🚀 Batch build" — they are packaged one by one, and a single failure does not affect the others;
+5. When finished, a summary shows success/failure and download links for every package, with **multi-select batch download**; each `.spk` is pre-ticked according to the architectures the mirror supports, while unsupported ones (e.g. `armv7`) stay unticked unless you change them;
+6. Batch download zips the selected packages into folders named `<app>-dsm7/`, so after extracting you can drop them straight into an sspks repository.
 
-> 批量场景默认走「预编译 / 纯脚本」二次打包(直接复用解包目录),适合对一批现成 .spk 统一改版本号、描述、维护者等信息后重新出包。
+> The batch flow repackages with "Prebuilt / plain scripts" by default (reusing the unpacked directory), which is ideal for bumping version, description or maintainer across a set of existing `.spk` files.
 
-## 导入 .spk 解包 + 二次打包
+## Import a `.spk`, unpack it, repackage it
 
-页面顶部「📥 导入 .spk 解包」支持两种方式:
+The **📥 Unpack .spk** entry at the top supports two ways:
 
-- 选择本地 `.spk` 文件上传;或
-- 填本地路径(如 `C:\path\to\foo.spk`)。
+- upload a local `.spk` file; or
+- enter a local path (e.g. `C:\path\to\foo.spk`).
 
-点击「解包」后,会自动:
+After clicking "Unpack" it automatically:
 
-1. 拆包到 `output/_imported/<包名>/`:
-   - 外层文件(INFO、package.tgz、scripts/、图标、conf/ 等)放在该目录根;
-   - 内层 `package.tgz` 解到 `target/` 子目录;
-2. **把解析出的 INFO 元信息(名称/版本/描述/维护者等)自动填入下方「套件信息」表单**;
-3. 自动切到「预编译」方式,并把「源目录」指向解包目录。
+1. extracts the package into `output/_imported/<package>/`:
+   - outer files (`INFO`, `package.tgz`, `scripts/`, icons, `conf/`, …) at the root of that directory;
+   - the inner `package.tgz` into the `target/` subdirectory;
+2. **fills the parsed `INFO` metadata (name / version / description / maintainer, …) into the "package info" form**;
+3. switches the build method to "Prebuilt" and points "source directory" at the unpacked directory.
 
-你只需改一下表单(比如改版本号、描述),直接点「构建」即可**二次打包**成新的 .spk;scripts/图标/conf/WIZARD_UIFILES 等外层资源都会原样保留。
+Just adjust the form (version, description, …) and click "Build" to **repackage** a new `.spk`; outer resources such as `scripts/`, icons, `conf/` and `WIZARD_UIFILES` are preserved as-is.
 
-> 带 Web UI 的套件,其 `adminport` / `adminprotocol` / `adminurl` / `dsmuidir` / `dsmappname` 等字段会在二次打包时自动写回 INFO,群晖套件中心仍会显示「打开」按钮。
+> For packages with a web UI, the `adminport` / `adminprotocol` / `adminurl` / `dsmuidir` / `dsmappname` fields are written back into `INFO` when repackaging, so the "Open" button still appears in Synology Package Center.
 
-## 与 sspks 套件服务器配合
+## Working with an sspks package server
 
-把生成的 `.spk` 丢进你 [sspks](https://github.com/tbc0309/sspks-imnks) 服务器的 `packages` 目录,群晖**套件中心 → 套件来源**填上服务器地址即可安装。
+Drop the generated `.spk` into the `packages` directory of your [sspks](https://github.com/tbc0309/sspks-imnks) server, then add the server URL under **Package Center → Package Sources** on the NAS to install it.
 
-> DSM 7 手动安装第三方未签名包时,需在套件中心设置里把「信任级别」改为**任意发布者**。
+> When manually installing an unsigned third-party package on DSM 7, set the trust level in Package Center settings to **Any publisher**.
 
-### 机型命名与分发
+### Architecture naming and distribution
 
-每个 .spk 会在 INFO 的 `arch` 字段**自动写入该架构家族的全部机型代号**(家族代号在最前 + 具体机型代号),这样群晖套件中心会按你的具体机型自动匹配到对应包:
+Every `.spk` lists **all model codes of the architecture family** in the `INFO` `arch` field (family code first, then specific model codes), so Package Center matches the package to the exact model:
 
-| 架构 | INFO 的 arch 字段内容(节选) |
+| Architecture | `arch` field content (excerpt) |
 | --- | --- |
 | `x86_64` | `x86_64 bromolow cedarview avoton braswell broadwell ... geminilake denverton v1000 v1000nk r1000 r1000nk epyc7002 epyc7003 icelaked grantley purley kvmx64 dockerx64` |
 | `arm64` | `armv8 arm64 aarch64 rtd1296 rtd1619b armada37xx armada8040 rtd1293 rtd1619` |
 | `armv7` | `armv7 armada370 armada375 armada38x armadaxp alpine alpine4k monaco comcerto2k hi3535` |
-| `noarch` | `noarch`(所有机型通用) |
+| `noarch` | `noarch` (works on every model) |
 
-> 注意 `arm64` 会同时写 `armv8` / `arm64` / `aarch64`:sspks-imnks 的机型家族用的是 `armv8`,若只写 `arm64` 会导致群晖匹配不到 ARM 机型包。文件名仍按 `<名称>_<架构>-<版本>.spk` 命名。
+> Note that `arm64` writes `armv8` / `arm64` / `aarch64` at the same time: the sspks-imnks model family is called `armv8`, and writing only `arm64` makes Synology fail to match ARM models. File names still follow `<name>_<arch>-<version>.spk`.
 
-## 目录结构
+## Directory layout
 
 ```
 spk-builder/
-├── server.py      # 后端服务(HTTP + 构建任务 + 产物下载)
-├── spkpack.py     # 打包核心(生成 INFO/scripts/package.tgz/.spk)
-├── builders.py    # 构建提供者与工具链检测
-├── web/           # 前端界面(index.html / app.js / style.css)
-├── run.bat        # 一键启动(Windows)
-├── output/        # 构建产物(运行时生成)
-└── tools/         # (可选)便携工具链,如 Go
+├── server.py      # backend service (HTTP + build jobs + artifact downloads)
+├── spkpack.py     # packaging core (generates INFO / scripts / package.tgz / .spk)
+├── builders.py    # build providers and toolchain detection
+├── web/           # frontend (index.html / app.js / style.css)
+├── run.bat        # one-click start (Windows)
+├── 更新日志.txt    # changelog, read by the "Changelog" tab
+├── output/        # build artifacts (created at runtime)
+├── release/       # ready-to-run release packages
+└── tools/         # (optional) portable toolchains, e.g. Go
 ```
 
-## 常见问题
+## FAQ
 
-- **Go 未安装**:界面顶部会显示红色徽标。安装 Go 后重启本工具即可。
-- **Docker 未安装**:仅影响“Docker”构建方式,打包与 Go/本地命令不受影响。
-- **运行身份 root / 非 root**:构建页「④ 运行配置」里选。选「非 root」会生成 `conf/privilege`(DSM 7 推荐非 root 运行);选「root」则以最高权限运行。
-- **产物下载路径**:下载链接指向 `output/` 下相对路径,文件名按 `<名称>_<架构>-<版本>.spk` 命名(如 `myapp_x86_64-1.0.0.spk`、`myapp_noarch-1.0.0.spk`)。
+- **Go is not installed**: a red badge shows at the top of the UI. Install Go and restart the tool.
+- **Docker is not installed**: only the "Docker" build method is affected; packaging and the Go / local-command methods still work.
+- **Run identity root / non-root**: chosen under "④ Run configuration" on the build page. "Non-root" generates `conf/privilege` (recommended for DSM 7); "root" runs with the highest privileges.
+- **Download paths**: links point to relative paths under `output/`, and file names follow `<name>_<arch>-<version>.spk` (e.g. `myapp_x86_64-1.0.0.spk`, `myapp_noarch-1.0.0.spk`).
