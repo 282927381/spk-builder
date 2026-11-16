@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 
-rem ???????????,???? PATH ?? python
+rem Prefer a portable Python next to run.bat, then tools\python, then PATH.
 set "PY=python"
 if exist "%~dp0runtime\python.exe" set "PY=%~dp0runtime\python.exe"
 if exist "%~dp0tools\python\python.exe" set "PY=%~dp0tools\python\python.exe"
@@ -15,7 +15,7 @@ if errorlevel 1 (
 )
 
 echo ======================================================
-echo   SPK Build Station v1.0.1 starting ...
+echo   SPK Build Station v1.0.2 starting ...
 echo   Browser will open: http://127.0.0.1:8800
 echo   (press Ctrl+C or close this window to stop)
 echo ======================================================
